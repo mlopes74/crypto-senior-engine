@@ -29,19 +29,30 @@ ATIVOS = {
     "Stacks (STX)":         "STX/USDT",
 }
 
-# --- BUSCA DE DADOS (cache de 60s) ---
+# --- EXCHANGES COM FALLBACK AUTOMÁTICO ---
+# Ordem de prioridade: tenta cada uma até obter dados com sucesso
+EXCHANGES = [
+    ccxt.kucoin({'enableRateLimit': True}),
+    ccxt.okx({'enableRateLimit': True}),
+    ccxt.kraken({'enableRateLimit': True}),
+]
+
 @st.cache_data(ttl=60)
 def buscar_dados(symbol: str) -> pd.DataFrame | None:
-    try:
-        exchange = ccxt.bybit({'enableRateLimit': True})
-        bars = exchange.fetch_ohlcv(symbol, timeframe='1d', limit=250)
-        df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('Date', inplace=True)
-        return df
-    except Exception as e:
-        st.error(f"Erro na API para {symbol}: {e}")
-        return None
+    erros = []
+    for exchange in EXCHANGES:
+        try:
+            bars = exchange.fetch_ohlcv(symbol, timeframe='1d', limit=250)
+            df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('Date', inplace=True)
+            return df
+        except Exception as e:
+            erros.append(f"{exchange.id}: {e}")
+            continue
+
+    st.error(f"Todas as exchanges falharam para {symbol}:\n" + "\n".join(erros))
+    return None
 
 # --- SIDEBAR ---
 st.sidebar.header("Painel de Controle")

@@ -13,8 +13,8 @@ from engine import CryptoEngine
 # ==================== CONFIGURAÇÃO ====================
 TELEGRAM_TOKEN   = "8556182706:AAHCLVj8OdTRJZn90hpNESV6WrIweAujTBU"
 TELEGRAM_CHAT_ID = "617365483"
-ESTADO_FILE      = "estado.json"   # Persiste sinais entre reinicializações
-INTERVALO_SCAN   = 3600            # Varredura a cada 1 hora (ideal para timeframe 1d)
+ESTADO_FILE      = "estado.json"
+INTERVALO_SCAN   = 3600
 # ======================================================
 
 ATIVOS = {
@@ -35,9 +35,26 @@ ATIVOS = {
     "Stacks (STX)":         "STX/USDT",
 }
 
+# --- EXCHANGES COM FALLBACK AUTOMÁTICO ---
+EXCHANGES = [
+    ccxt.kucoin({'enableRateLimit': True}),
+    ccxt.okx({'enableRateLimit': True}),
+    ccxt.kraken({'enableRateLimit': True}),
+]
+
+def buscar_dados(ticker: str) -> pd.DataFrame | None:
+    for exchange in EXCHANGES:
+        try:
+            bars = exchange.fetch_ohlcv(ticker, timeframe='1d', limit=250)
+            df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            return df
+        except Exception as e:
+            print(f"  [{exchange.id}] falhou para {ticker}: {e}")
+            continue
+    return None
+
 # --- PERSISTÊNCIA DE ESTADO ---
 def carregar_estado() -> dict:
-    """Carrega o último sinal de cada ativo do disco (evita alertas duplicados ao reiniciar)."""
     if os.path.exists(ESTADO_FILE):
         try:
             with open(ESTADO_FILE, 'r') as f:
@@ -67,7 +84,6 @@ def enviar_telegram(mensagem: str) -> bool:
 
 # --- LOOP PRINCIPAL ---
 def executar_monitoramento():
-    exchange = ccxt.bybit({'enableRateLimit': True})
     historico_sinais = carregar_estado()
 
     print("=" * 52)
@@ -85,8 +101,10 @@ def executar_monitoramento():
 
         for nome, ticker in ATIVOS.items():
             try:
-                bars = exchange.fetch_ohlcv(ticker, timeframe='1d', limit=250)
-                df   = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                df = buscar_dados(ticker)
+                if df is None:
+                    print(f"  → [SKIP] {nome}: todas as exchanges falharam")
+                    continue
 
                 engine = CryptoEngine(df)
                 sinal, cor, vies, preco, rsi, macd_hist, _, detalhe = engine.gerar_sinal()
@@ -111,7 +129,7 @@ def executar_monitoramento():
                     historico_sinais[nome] = sinal
                     salvar_estado(historico_sinais)
 
-                time.sleep(1)  # Anti-rate-limit entre ativos
+                time.sleep(1)
 
             except Exception as e:
                 print(f"  → [ERRO] {nome}: {e}")
