@@ -33,7 +33,7 @@ ATIVOS = {
 @st.cache_data(ttl=60)
 def buscar_dados(symbol: str) -> pd.DataFrame | None:
     try:
-        exchange = ccxt.binance({'enableRateLimit': True})
+        exchange = ccxt.bybit({'enableRateLimit': True})
         bars = exchange.fetch_ohlcv(symbol, timeframe='1d', limit=250)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')

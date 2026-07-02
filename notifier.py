@@ -67,7 +67,7 @@ def enviar_telegram(mensagem: str) -> bool:
 
 # --- LOOP PRINCIPAL ---
 def executar_monitoramento():
-    exchange = ccxt.binance({'enableRateLimit': True})
+    exchange = ccxt.bybit({'enableRateLimit': True})
     historico_sinais = carregar_estado()
 
     print("=" * 52)
